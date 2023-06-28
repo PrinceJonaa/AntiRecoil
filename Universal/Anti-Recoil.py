@@ -2,7 +2,7 @@ import os
 import random
 import time
 import tkinter as tk
-from ctypes import *
+from ctypes import CDLL, Structure, c_long, c_uint16, c_int, pointer
 from threading import Thread
 from tkinter import ttk
 from PIL import ImageGrab
@@ -23,6 +23,20 @@ class InputEvent(Structure):
 
 
 class MouseInput:
+    """
+    MouseInput class to simulate mouse input.
+    
+    Parameters:
+    device_name (str): The device name to search for, set to "event-mouse".
+    
+    Functionality:
+    - Searches for a device in /dev/input/by-path/ that ends with the device_name.
+    - Opens the device file for writing.
+    - Raises an Exception if the device is not found.
+    - Sends input events to the device to simulate clicks and movement.
+    - click() simulates a left mouse click by sending press and release events.
+    - move(x, y) moves the mouse cursor by x and y coordinates.
+    """
     def __init__(self):
         self.handle = -1
         device_name = "event-mouse"
@@ -58,43 +72,47 @@ class MouseInput:
         self.__send_input(0x02, 1, y)
 
 
-mouseIpt = MouseInput()
+mouse_input = MouseInput()
 
 # Configuration
-horizontal_range = 6
+horizontal_range = 4
 min_vertical = 6.6
 max_vertical = 7.2
 min_firerate = 0.01
 max_firerate = 0.03
 toggle_button = 'num lock'
-enabled = False
+anti_recoil_enabled = False
 vertical_speed = 3.0
 # Set the coordinates for the crosshair position
 crosshair_x = 500
 crosshair_y = 300
 # Set the pixel color threshold for enemy detection
 enemy_color_threshold = 50
-triggerbot_button = 'c'
+triggerbot_button = '0'
 
 
 def anti_recoil_loop():
-    global enabled, last_state
+    global anti_recoil_enabled, last_state
     last_state = False
     last_space_press_time = 0
 
     while True:
         key_down = keyboard.is_pressed(toggle_button)
-        # If the toggle button is pressed, toggle the enabled value and print
+        # If the toggle button is pressed, toggle the anti_recoil_enabled value and print
         if key_down != last_state:
             last_state = key_down
             if last_state:
-                enabled = not enabled
-                if enabled:
-                    print("Anti-recoil ENABLED")
+                anti_recoil_enabled = not anti_recoil_enabled
+                if anti_recoil_enabled:
+                    print("Anti-recoil anti_recoil_enabled")
                 else:
                     print("Anti-recoil DISABLED")
+        
+        # Generate random time offset with the config settings
+        time_offset = random.randrange(int(min_firerate * offset_const), int(max_firerate * offset_const)) / offset_const
+        time.sleep(time_offset)
 
-        if mouse.is_pressed(button='left') and enabled:
+        if mouse.is_pressed(button='left') and anti_recoil_enabled:
             # Offsets are generated every shot between the min and max config settings
             offset_const = 1000
             horizontal_offset = random.randrange(
@@ -103,20 +121,15 @@ def anti_recoil_loop():
                 int(min_vertical * offset_const), int(max_vertical * offset_const)) / offset_const
 
             # Move the mouse with these offsets
-            mouseIpt.move(int(horizontal_offset), int(vertical_offset))
-
-            # Generate random time offset with the config settings
-            time_offset = random.randrange(
-                int(min_firerate * offset_const), int(max_firerate * offset_const)) / offset_const
-            time.sleep(time_offset)
+            mouse_input.move(int(horizontal_offset), int(vertical_offset))
 
         if mouse.is_pressed(button='left') and mouse.is_pressed(button='right'):
             while mouse.is_pressed(button='left'):
                 # Adjust the y-offset with the vertical speed
-                mouseIpt.move(-10, int(12 * vertical_speed))
+                mouse_input.move(-10, int(12 * vertical_speed))
                 time.sleep(time_offset)
                 # Adjust the y-offset with the vertical speed
-                mouseIpt.move(10, int(-10 * vertical_speed))
+                mouse_input.move(10, int(-10 * vertical_speed))
                 time.sleep(time_offset)
 
         time.sleep(0.001)
@@ -157,13 +170,13 @@ def triggerbot():
 
 
 def start_anti_recoil():
-    global enabled
-    enabled = True
+    global anti_recoil_enabled
+    anti_recoil_enabled = True
 
 
 def stop_anti_recoil():
-    global enabled
-    enabled = False
+    global anti_recoil_enabled
+    anti_recoil_enabled = False
 
 
 def update_toggle_button(*args):
@@ -215,6 +228,22 @@ def update_min_vertical(val):
 
 
 def update_max_vertical(val):
+    """
+    Updates the max_vertical value and ensures it remains within the valid range.
+
+    Parameters:
+    val (float): The new max_vertical value from the slider.
+
+    Functionality:
+    - Sets the global max_vertical variable to the val from the slider.
+    - Ensures max_vertical remains at least 0.1 higher than min_vertical. If not, 
+      updates min_vertical to max_vertical - 0.1.
+    - Ensures min_vertical remains at least 0.2 lower than max_vertical. If not, 
+      updates min_vertical to max_vertical - 0.2.
+    - Ensures max_vertical is at least 0.2. If not, sets max_vertical to 0.2.
+    - Updates the slider to the new max_vertical value.
+    """
+
     global min_vertical, max_vertical
     max_vertical = float(val)
     if max_vertical < min_vertical + 0.1:
@@ -227,7 +256,21 @@ def update_max_vertical(val):
     max_vertical_slider.set(max_vertical)
 
 
+
 def update_min_firerate(val):
+    """
+    Updates the min_firerate value and ensures it remains within the valid range.
+    
+    Parameters:
+    val (float): The new min_firerate value from the slider.
+    
+    Functionality:
+    - Sets the global min_firerate variable to the val from the slider.
+    - Ensures min_firerate remains at least 0.001 lower than max_firerate. If not, 
+      updates max_firerate to min_firerate + 0.001.
+    - Ensures min_firerate is at least 0.001. If not, sets min_firerate to 0.001.
+    - Updates the slider to the new min_firerate value.
+    """
     global min_firerate, max_firerate
     min_firerate = float(val)
     if min_firerate > max_firerate - 0.001:
@@ -343,5 +386,22 @@ enemy_color_threshold_slider = tk.Scale(main_frame, from_=0, to=100, orient=tk.H
                                         label="Enemy Color Threshold", command=update_enemy_color_threshold)
 enemy_color_threshold_slider.set(enemy_color_threshold)
 enemy_color_threshold_slider.grid(row=4, column=0, columnspan=2, pady=(10, 5))
+
+# Function to validate and set a default value if the input is invalid
+def validate_and_set(var, values, default):
+    if var.get() not in values:
+        var.set(default)
+
+# Validate and set default value for toggle_button_var
+toggle_button_values = ['num lock', 'caps lock', 'scroll lock']
+validate_and_set(toggle_button_var, toggle_button_values, toggle_button_values[0])
+
+# Validate and set default value for triggerbot_button_var
+triggerbot_values = ['a', 'b', 'c', 'd', '0']
+validate_and_set(triggerbot_button_var, triggerbot_values, triggerbot_values[-1])
+
+# Validate and set default value for enemy_color_threshold_slider
+if enemy_color_threshold_slider.get() < 0 or enemy_color_threshold_slider.get() > 100:
+    enemy_color_threshold_slider.set(50)  # Default to 50 if the value is invalid
 
 root.mainloop()
