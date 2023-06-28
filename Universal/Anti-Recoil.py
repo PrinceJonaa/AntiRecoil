@@ -2,7 +2,7 @@ import os
 import random
 import time
 import tkinter as tk
-from ctypes import CDLL, Structure, c_long, c_uint16, c_int, pointer
+from ctypes import CDLL, Structure, c_long, c_uint16, c_int, pointer, sizeof
 from threading import Thread
 from tkinter import ttk
 from PIL import ImageGrab
@@ -108,9 +108,7 @@ def anti_recoil_loop():
                 else:
                     print("Anti-recoil DISABLED")
         
-        # Generate random time offset with the config settings
-        time_offset = random.randrange(int(min_firerate * offset_const), int(max_firerate * offset_const)) / offset_const
-        time.sleep(time_offset)
+        
 
         if mouse.is_pressed(button='left') and anti_recoil_enabled:
             # Offsets are generated every shot between the min and max config settings
@@ -122,15 +120,25 @@ def anti_recoil_loop():
 
             # Move the mouse with these offsets
             mouse_input.move(int(horizontal_offset), int(vertical_offset))
+            
+            # Generate random time offset with the config settings
+            time_offset = random.randrange(int(min_firerate * offset_const), int(max_firerate * offset_const)) / offset_const
+            time.sleep(time_offset)
 
         if mouse.is_pressed(button='left') and mouse.is_pressed(button='right'):
             while mouse.is_pressed(button='left'):
+                offset_const = 1000
+                # Generate random time offset with the config settings
+                time_offset = random.randrange(int(min_firerate * offset_const), int(max_firerate * offset_const)) / offset_const
+                time.sleep(time_offset)
                 # Adjust the y-offset with the vertical speed
                 mouse_input.move(-10, int(12 * vertical_speed))
                 time.sleep(time_offset)
                 # Adjust the y-offset with the vertical speed
                 mouse_input.move(10, int(-10 * vertical_speed))
                 time.sleep(time_offset)
+                
+                
 
         time.sleep(0.001)
 
