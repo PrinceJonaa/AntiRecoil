@@ -3,6 +3,7 @@ import random
 import time
 from ctypes import *
 from threading import Thread
+from tkinter import Tk, Scale, Label, Button, HORIZONTAL
 
 import keyboard
 import mouse
@@ -56,20 +57,44 @@ class MouseInput:
 
 mouse_input = MouseInput()
 
-toggle_button = "delete"
-active_state = False
-last_toggle_state = False
+pattern_directory = "/Pattern"
 
-recoil_patterns = {
-    "R-301": [[0, 0, 0.0], [-5, 8, 0.0], [-7, 6, 0.0], [-1, 8, 0.0], [-5, 9, 0.0], [-2, 9, 0.0],
-               [0, 6, 0.0], [0, 5, 0.0], [6, 2, 0.0], [-7, 3, 0.0], [1, 2, 0.0], [2, 5, 0.0], [0, 6, 0.0],
-               [-2, 5, 0.0], [1, 4, 0.0], [-2, 4, 0.0], [-3, 1, 0.0], [-4, 4, 0.0], [-6, -2, 0.0], [-1, -4, 0.0],
-               [3, 0, 0.0], [2, 1, 0.0], [-2, 0, 0.0], [-2, -3, 0.0]]
-}
+recoil_patterns = {}
+pattern_files = os.listdir(pattern_directory)
+for pattern_file in pattern_files:
+    pattern_name = pattern_file.split(".")[0]
+    pattern_path = os.path.join(pattern_directory, pattern_file)
+    with open(pattern_path, "r") as file:
+        lines = file.readlines()
+        pattern = [[float(value) for value in line.strip().split(",")] for line in lines]
+        recoil_patterns[pattern_name] = pattern
 
 enabled = False
 last_state = False
 last_space_press_time = 0
+toggle_button = "delete"  # Default toggle button
+
+
+min_uniform = 0.05  # Minimum value for random.uniform
+max_uniform = 0.06  # Maximum value for random.uniform
+
+selected_pattern = "R301"  # Default pattern
+
+
+def on_pattern_change(value):
+    global selected_pattern
+    pattern_names = list(recoil_patterns.keys())
+    selected_pattern = pattern_names[int(value)]
+
+
+def on_min_uniform_change(value):
+    global min_uniform
+    min_uniform = float(value)
+
+
+def on_max_uniform_change(value):
+    global max_uniform
+    max_uniform = float(value)
 
 
 def anti_recoil_loop():
@@ -92,18 +117,46 @@ def anti_recoil_loop():
                     print("Anti-recoil DISABLED")
 
         if mouse.is_pressed(button="left") and enabled:
-            for pattern in recoil_patterns["R-301"]:
+            for pattern in recoil_patterns[selected_pattern]:
                 mouse_input.click()
                 mouse_input.move(pattern[0], int(pattern[1] / 1.5))
-                time.sleep(random.uniform(0.072, 0.081))
+                time.sleep(random.uniform(min_uniform, max_uniform))
 
         time.sleep(0.001)
 
 
 def main():
-    keyboard.add_hotkey(toggle_button, anti_recoil_loop)
-    while True:
-        time.sleep(0.1)
+    global selected_pattern
+
+    root = Tk()
+    root.title("Pattern Selector")
+
+    pattern_names = list(recoil_patterns.keys())
+
+    pattern_slider_label = Label(root, text="Pattern Selector")
+    pattern_slider_label.pack()
+
+    pattern_slider = Scale(root, from_=0, to=len(pattern_names) - 1, orient=HORIZONTAL, command=on_pattern_change)
+    pattern_slider.pack()
+
+    min_uniform_label = Label(root, text="Min Uniform")
+    min_uniform_label.pack()
+
+    min_uniform_slider = Scale(root, from_=0.0, to=1.0, resolution=0.01, orient=HORIZONTAL,
+                               command=on_min_uniform_change)
+    min_uniform_slider.pack()
+
+    max_uniform_label = Label(root, text="Max Uniform")
+    max_uniform_label.pack()
+
+    max_uniform_slider = Scale(root, from_=0.0, to=1.0, resolution=0.01, orient=HORIZONTAL,
+                               command=on_max_uniform_change)
+    max_uniform_slider.pack()
+
+    toggle_button = Button(root, text="Toggle Anti-Recoil", command=toggle_anti_recoil)
+    toggle_button.pack()
+
+    root.mainloop()
 
 
 anti_recoil_thread = Thread(target=anti_recoil_loop)
