@@ -26,7 +26,8 @@ class MouseInput:
         device_name = "event-mouse"
         for device in os.listdir("/dev/input/by-path/"):
             if device.endswith(device_name):
-                self.handle = os.open("/dev/input/by-path/" + device, os.O_WRONLY)
+                self.handle = os.open(
+                    "/dev/input/by-path/" + device, os.O_WRONLY)
                 return
         raise Exception("Input [" + device_name + "] not found!")
 
@@ -51,8 +52,8 @@ class MouseInput:
         self.__send_input(0x01, 0x110, 0)
 
     def move(self, x, y):
-        self.__send_input(0x02, 0, x)
-        self.__send_input(0x02, 1, y)
+        self.__send_input(0x02, 0, int(x))
+        self.__send_input(0x02, 1, int(y))
 
 
 mouse_input = MouseInput()
@@ -66,35 +67,77 @@ for pattern_file in pattern_files:
     pattern_path = os.path.join(pattern_directory, pattern_file)
     with open(pattern_path, "r") as file:
         lines = file.readlines()
-        pattern = [[float(value) for value in line.strip().split(",")] for line in lines]
+        pattern = []
+        for line in lines:
+            line = line.strip()
+            if line:
+                values = line.split(",")
+                if len(values) == 3:
+                    try:
+                        x = float(values[0])
+                        y = float(values[1])
+                        sleep_time = float(values[2])
+                        pattern.append([x, y, sleep_time])
+                    except ValueError:
+                        print(
+                            f"Invalid pattern format in file: {pattern_file}")
+                else:
+                    print(f"Invalid pattern format in file: {pattern_file}")
         recoil_patterns[pattern_name] = pattern
+
 
 enabled = False
 last_state = False
 last_space_press_time = 0
 toggle_button = "delete"  # Default toggle button
-
+pattern_names = list(recoil_patterns.keys())
 
 min_uniform = 0.05  # Minimum value for random.uniform
 max_uniform = 0.06  # Maximum value for random.uniform
 
-selected_pattern = "R301"  # Default pattern
+selected_pattern = pattern_names[0]
 
 
 def on_pattern_change(value):
-    global selected_pattern
-    pattern_names = list(recoil_patterns.keys())
+    global selected_pattern, pattern_names
     selected_pattern = pattern_names[int(value)]
 
 
 def on_min_uniform_change(value):
-    global min_uniform
+    global min_uniform, max_uniform
     min_uniform = float(value)
 
-
 def on_max_uniform_change(value):
-    global max_uniform
-    max_uniform = float(value)
+    global min_uniform, max_uniform
+
+
+def load_recoil_patterns():
+    global recoil_patterns
+    pattern_directory = "/home/jo/Documents/Apex/1/AHK/src/Pattern"
+    pattern_files = os.listdir(pattern_directory)
+    for pattern_file in pattern_files:
+        pattern_name = pattern_file.split(".")[0]
+        pattern_path = os.path.join(pattern_directory, pattern_file)
+        with open(pattern_path, "r") as file:
+            lines = file.readlines()
+            pattern = []
+            for line in lines:
+                line = line.strip()
+                if line:
+                    values = line.split(",")
+                    if len(values) == 3:
+                        try:
+                            x = float(values[0])
+                            y = float(values[1])
+                            sleep_time = float(values[2])
+                            pattern.append([x, y, sleep_time])
+                        except ValueError:
+                            print(
+                                f"Invalid pattern format in file: {pattern_file}")
+                    else:
+                        print(
+                            f"Invalid pattern format in file: {pattern_file}")
+            recoil_patterns[pattern_name] = pattern
 
 
 def anti_recoil_loop():
@@ -120,7 +163,7 @@ def anti_recoil_loop():
             for pattern in recoil_patterns[selected_pattern]:
                 mouse_input.click()
                 mouse_input.move(pattern[0], int(pattern[1] / 1.5))
-                time.sleep(random.uniform(min_uniform, max_uniform))
+                time.sleep(pattern[2] / 1000.0)
 
         time.sleep(0.001)
 
@@ -133,10 +176,12 @@ def main():
 
     pattern_names = list(recoil_patterns.keys())
 
-    pattern_slider_label = Label(root, text="Pattern Selector")
+    pattern_slider_label_text = f"Pattern: {selected_pattern}"
+    pattern_slider_label = Label(root, text=pattern_slider_label_text)
     pattern_slider_label.pack()
 
-    pattern_slider = Scale(root, from_=0, to=len(pattern_names) - 1, orient=HORIZONTAL, command=on_pattern_change)
+    pattern_slider = Scale(root, from_=0, to=len(
+        pattern_names) - 1, orient=HORIZONTAL, command=on_pattern_change)
     pattern_slider.pack()
 
     min_uniform_label = Label(root, text="Min Uniform")
@@ -144,6 +189,7 @@ def main():
 
     min_uniform_slider = Scale(root, from_=0.0, to=1.0, resolution=0.01, orient=HORIZONTAL,
                                command=on_min_uniform_change)
+    min_uniform_slider.set(min_uniform)  # Set the default value
     min_uniform_slider.pack()
 
     max_uniform_label = Label(root, text="Max Uniform")
@@ -151,13 +197,18 @@ def main():
 
     max_uniform_slider = Scale(root, from_=0.0, to=1.0, resolution=0.01, orient=HORIZONTAL,
                                command=on_max_uniform_change)
+    max_uniform_slider.set(max_uniform)  # Set the default value
     max_uniform_slider.pack()
 
-    toggle_button = Button(root, text="Toggle Anti-Recoil", command=toggle_anti_recoil)
+    toggle_button = Button(
+        root, text="Toggle Anti-Recoil", command=anti_recoil_loop)
     toggle_button.pack()
 
     root.mainloop()
 
+
+# Load recoil patterns
+load_recoil_patterns()
 
 anti_recoil_thread = Thread(target=anti_recoil_loop)
 anti_recoil_thread.daemon = True
