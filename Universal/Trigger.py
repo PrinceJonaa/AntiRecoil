@@ -9,6 +9,7 @@ from PIL import ImageGrab
 
 import keyboard
 import mouse
+from ultralytics import YOLO
 
 libc = CDLL("libc.so.6")
 
@@ -83,111 +84,91 @@ enemy_color_threshold = 50
 triggerbot_button = '0'
 
 # Function to check if an enemy is within the crosshair
-def is_enemy_in_crosshair():
+def is_enemy_in_crosshair(model):
     # Capture the game screen
     screen = ImageGrab.grab()
 
-    # Get the pixel color at the crosshair position
-    pixel_color = screen.getpixel((crosshair_x, crosshair_y))
+    # Define the region of interest based on the crosshair position
+    left = crosshair_x - 10  # Adjust the left coordinate as needed
+    top = crosshair_y - 10  # Adjust the top coordinate as needed
+    right = crosshair_x + 10  # Adjust the right coordinate as needed
+    bottom = crosshair_y + 10  # Adjust the bottom coordinate as needed
+
+    # Crop the image to the specified region of interest
+    roi = screen.crop((left, top, right, bottom))
+
+    # Get the pixel color at the crosshair position in the cropped image
+    pixel_color = roi.getpixel((10, 10))  # Assuming the crosshair is at the center of the cropped image
 
     # Check if the pixel color indicates an enemy player
     if pixel_color[0] < enemy_color_threshold and pixel_color[1] < enemy_color_threshold and pixel_color[2] < enemy_color_threshold:
-        return True
+        # Perform object detection on the cropped region of interest
+        image_path = 'screen.jpg'  # Save the cropped image to a file
+        roi.save(image_path)
+        results = model(image_path)  # Perform object detection using YOLOv5
+
+        # Check if any enemy objects are detected
+        if results.xyxy[0] is not None:
+            return True
 
     return False
 
 
-# Function to perform a mouse click
-def perform_mouse_click():
-    mouse.click('left')
+def triggerbot_thread():
+    # Load the YOLOv5 model for object detection
+    model = YOLO('yolov8n-seg.pt')
 
-
-
-# Triggerbot function
-def triggerbot():
     while True:
-        # Check if the triggerbot button is held (e.g., c)
         if keyboard.is_pressed(triggerbot_button):
-            # Check if an enemy is within the crosshair
-            if is_enemy_in_crosshair():
-                # Perform a mouse click
-                perform_mouse_click()
-
-        # Sleep for a short duration before checking again
+            if is_enemy_in_crosshair(model):
+                mouse_input.click()
         time.sleep(0.01)
 
-# Create a thread for the triggerbot function
-triggerbot_thread = Thread(target=triggerbot)
-triggerbot_thread.daemon = True
-triggerbot_thread.start()
 
-def update_triggerbot_button(*args):
-    global triggerbot_button
-    triggerbot_button = triggerbot_button_var.get()
-    
-def update_crosshair_x(val):
-    global crosshair_x
-    crosshair_x = int(val)
+def main():
+    triggerbot_thread_instance = Thread(target=triggerbot_thread)
+    triggerbot_thread_instance.start()
+
+    root = tk.Tk()
+    root.title("Triggerbot Settings")
+    root.geometry("300x150")
+
+    def start_triggerbot():
+        global triggerbot_button
+        triggerbot_button = button_entry.get()
+        button_entry.delete(0, "end")
+        button_entry.insert(0, "Press any key...")
+        button_entry.config(state="disabled")
+        start_button.config(state="disabled")
+        stop_button.config(state="normal")
+        triggerbot_thread_instance.start()
+
+    def stop_triggerbot():
+        global triggerbot_button
+        triggerbot_button = '0'
+        button_entry.delete(0, "end")
+        button_entry.insert(0, "Not active")
+        button_entry.config(state="normal")
+        start_button.config(state="normal")
+        stop_button.config(state="disabled")
+
+    label = ttk.Label(root, text="Button to activate Triggerbot:")
+    label.pack(pady=10)
+
+    button_entry = ttk.Entry(root, width=20)
+    button_entry.pack(pady=10)
+    button_entry.insert(0, "Press any key...")
+    button_entry.config(state="disabled")
+
+    start_button = ttk.Button(root, text="Start Triggerbot", command=start_triggerbot)
+    start_button.pack(pady=10)
+
+    stop_button = ttk.Button(root, text="Stop Triggerbot", command=stop_triggerbot)
+    stop_button.pack(pady=10)
+    stop_button.config(state="disabled")
+
+    root.mainloop()
 
 
-def update_enemy_color_threshold(val):
-    global enemy_color_threshold
-    enemy_color_threshold = int(val)
-
-
-def update_crosshair_y(val):
-    global crosshair_y
-    crosshair_y = int(val)
-
-root = tk.Tk()
-root.title("Anti-Recoil Script")
-
-main_frame = tk.Frame(root)
-main_frame.pack(padx=10, pady=10)
-
-    
-triggerbot_frame = tk.Frame(main_frame)
-triggerbot_frame.grid(row=2, column=0, columnspan=2)
-
-triggerbot_label = tk.Label(triggerbot_frame, text="Triggerbot Key:")
-triggerbot_label.grid(row=0, column=0, padx=(0, 5))
-
-triggerbot_button_var = tk.StringVar()
-triggerbot_button_var.trace("w", update_triggerbot_button)
-triggerbot_dropdown = ttk.Combobox(triggerbot_frame, textvariable=triggerbot_button_var, values=[
-    'a', 'b', 'c', 'd', '0'], width=10)
-triggerbot_dropdown.set(triggerbot_button)
-triggerbot_dropdown.grid(row=0, column=1)
-
-crosshair_frame = tk.Frame(main_frame)
-crosshair_frame.grid(row=3, column=0, columnspan=2, pady=(10, 0))
-
-crosshair_x_slider = tk.Scale(crosshair_frame, from_=0, to=1920, orient=tk.HORIZONTAL, label="Crosshair X",
-                              command=update_crosshair_x)
-crosshair_x_slider.set(crosshair_x)
-crosshair_x_slider.pack(side=tk.LEFT, padx=(0, 10))
-
-crosshair_y_slider = tk.Scale(crosshair_frame, from_=0, to=1080, orient=tk.HORIZONTAL, label="Crosshair Y",
-                              command=update_crosshair_y)
-crosshair_y_slider.set(crosshair_y)
-crosshair_y_slider.pack(side=tk.LEFT, padx=(0, 10))
-
-enemy_color_threshold_slider = tk.Scale(main_frame, from_=0, to=100, orient=tk.HORIZONTAL,
-                                        label="Enemy Color Threshold", command=update_enemy_color_threshold)
-enemy_color_threshold_slider.set(enemy_color_threshold)
-enemy_color_threshold_slider.grid(row=4, column=0, columnspan=2, pady=(10, 5))
-
-# Function to validate and set a default value if the input is invalid
-def validate_and_set(var, values, default):
-    if var.get() not in values:
-        var.set(default)
-
-# Validate and set default value for triggerbot_button_var
-triggerbot_values = ['a', 'b', 'c', 'd', '0']
-validate_and_set(triggerbot_button_var, triggerbot_values, triggerbot_values[-1])
-
-# Validate and set default value for enemy_color_threshold_slider
-if enemy_color_threshold_slider.get() < 0 or enemy_color_threshold_slider.get() > 100:
-    enemy_color_threshold_slider.set(50)  # Default to 50 if the value is invalid
-    
-root.mainloop()
+if __name__ == "__main__":
+    main()
