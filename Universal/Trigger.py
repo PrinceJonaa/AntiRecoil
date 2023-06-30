@@ -2,13 +2,16 @@ import os
 import random
 import time
 import tkinter as tk
-from ctypes import CDLL, Structure, c_long, c_uint16, c_int, pointer, sizeof
+from ctypes import CDLL, Structure, c_int, c_long, c_uint16, pointer, sizeof
 from threading import Thread
 from tkinter import ttk
-from PIL import ImageGrab
 
 import keyboard
 import mouse
+import torch
+from mobile_sam import SamAutomaticMaskGenerator, sam_model_registry
+from PIL import ImageGrab
+from torchvision.transforms import ToTensor
 from ultralytics import YOLO
 
 libc = CDLL("libc.so.6")
@@ -75,15 +78,27 @@ class MouseInput:
 
 mouse_input = MouseInput()
 
-triggerbot_button = '0'
+
+
 # Set the coordinates for the crosshair position
 crosshair_x = 500
-crosshair_y = 300
+crosshair_y = 500
 # Set the pixel color threshold for enemy detection
-enemy_color_threshold = 50
 triggerbot_button = '0'
 
-# Function to check if an enemy is within the crosshair
+# MobileSAM configuration
+sam_checkpoint = "Universal/images/mobile_sam.pt"
+model_type = "vit_t"
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Load MobileSAM model
+sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+sam.to(device=device)
+sam.eval()
+
+# Create an instance of SamAutomaticMaskGenerator
+mask_generator = SamAutomaticMaskGenerator(sam)
+
 def is_enemy_in_crosshair(model):
     # Capture the game screen
     screen = ImageGrab.grab()
@@ -96,23 +111,21 @@ def is_enemy_in_crosshair(model):
 
     # Crop the image to the specified region of interest
     roi = screen.crop((left, top, right, bottom))
+    
+    # Use YOLOV8 to object detect within the cropped image
 
-    # Get the pixel color at the crosshair position in the cropped image
-    pixel_color = roi.getpixel((10, 10))  # Assuming the crosshair is at the center of the cropped image
+    
+    # Convert the cropped image to tensor
+    image_tensor = ToTensor()(roi).unsqueeze(0).to(device=device)
 
-    # Check if the pixel color indicates an enemy player
-    if pixel_color[0] < enemy_color_threshold and pixel_color[1] < enemy_color_threshold and pixel_color[2] < enemy_color_threshold:
-        # Perform object detection on the cropped region of interest
-        image_path = 'screen.jpg'  # Save the cropped image to a file
-        roi.save(image_path)
-        results = model(image_path)  # Perform object detection using YOLOv5
+    # Generate masks using MobileSAM
+    masks = mask_generator.generate(image_tensor)
 
-        # Check if any enemy objects are detected
-        if results.xyxy[0] is not None:
-            return True
+    # Check if any enemy objects are detected
+    if len(masks) > 0:
+        return True
 
     return False
-
 
 def triggerbot_thread():
     # Load the YOLOv5 model for object detection
